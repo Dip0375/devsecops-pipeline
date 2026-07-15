@@ -169,7 +169,7 @@ HTML_TEMPLATE = """
             align-items: center;
             justify-content: center;
             position: relative;
-            background: linear-gradient(135deg, var(--blue) 0%, #0D1B2A 50%, var(--blue-dark) 100%);
+            background: linear-gradient(135deg, #1a0a0c 0%, #8B0000 30%, #C1121F 60%, #1D3557 100%);
             overflow: hidden;
             padding: 100px 5% 50px;
         }
@@ -179,8 +179,8 @@ HTML_TEMPLATE = """
             position: absolute;
             top: -50%; left: -50%;
             width: 200%; height: 200%;
-            background: radial-gradient(circle at 30% 50%, rgba(230, 57, 70, 0.1) 0%, transparent 50%),
-                        radial-gradient(circle at 70% 50%, rgba(168, 218, 220, 0.08) 0%, transparent 50%);
+            background: radial-gradient(circle at 30% 50%, rgba(230, 57, 70, 0.4) 0%, transparent 50%),
+                        radial-gradient(circle at 70% 50%, rgba(168, 218, 220, 0.15) 0%, transparent 50%);
             animation: heroRotate 20s linear infinite;
         }
 
