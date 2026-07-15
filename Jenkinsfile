@@ -7,7 +7,7 @@ pipeline {
         REPORT_DIR = 'reports'
         DOCKER_IMAGE = 'infinite375/humansafe'
         IMAGE_TAG = "${BUILD_NUMBER}"
-        RECIPIENT_EMAIL = "dipakpore375@gmail.com"
+        RECIPIENT_EMAIL = "dipnarayan.cse@gmail.com"
         PATH = "/var/lib/jenkins/.local/bin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
     }
 
