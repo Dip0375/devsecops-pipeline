@@ -272,7 +272,7 @@ pipeline {
 
         stage('Archive Reports') {
             steps {
-                archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive
+                archiveArtifacts artifacts: 'reports/**/*', fingerprint: true, allowEmptyArchive: true
             }
         }
 
