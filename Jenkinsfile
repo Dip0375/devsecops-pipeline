@@ -51,7 +51,8 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
                     sh '''
-                        curl -s -u $SONAR_TOKEN: \
+                        mkdir -p reports
+                        curl -s -u "$SONAR_TOKEN:" \
                         "$SONAR_HOST/api/measures/component?component=$SONAR_PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,coverage,security_hotspots,duplicated_lines_density" \
                         -o reports/sonar.json
                     '''
