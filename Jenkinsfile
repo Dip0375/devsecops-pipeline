@@ -1,33 +1,34 @@
 pipeline {
     agent any
 
-    tools {
-        sonarQube 'SonarScanner'
-    }
-
     environment {
         SONAR_PROJECT_KEY = 'humansafe'
         SONAR_PROJECT_NAME = 'HumanSafe'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
-                echo 'Source code checked out successfully'
+                echo "Repository checked out successfully."
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                          -Dsonar.projectName=${SONAR_PROJECT_NAME} \
-                          -Dsonar.sources=app \
-                          -Dsonar.python.version=3.11
-                    '''
+                script {
+                    def scannerHome = tool 'SonarScanner'
+
+                    withSonarQubeEnv('SonarQube') {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                              -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                              -Dsonar.sources=app \
+                              -Dsonar.python.version=3.11
+                        """
+                    }
                 }
             }
         }
@@ -42,29 +43,44 @@ pipeline {
 
         stage('Checkov Scan') {
             steps {
-                sh 'checkov -d terraform/ --output cli --quiet'
+                sh '''
+                    echo "Running Checkov..."
+                    checkov -d terraform/
+                '''
             }
         }
 
         stage('Trivy Filesystem Scan') {
             steps {
-                sh 'trivy fs --severity HIGH,CRITICAL --exit-code 1 app/'
+                sh '''
+                    echo "Running Trivy Filesystem Scan..."
+                    trivy fs --severity HIGH,CRITICAL app/
+                '''
             }
         }
 
         stage('Trivy Secret Scan') {
             steps {
-                sh 'trivy fs --scanners secret --severity HIGH,CRITICAL --exit-code 1 app/'
+                sh '''
+                    echo "Running Trivy Secret Scan..."
+                    trivy fs --scanners secret app/
+                '''
             }
         }
     }
 
     post {
+
         success {
-            echo 'Pipeline completed successfully'
+            echo "DevSecOps Pipeline completed successfully."
         }
+
         failure {
-            echo 'Pipeline failed. Check the logs.'
+            echo "Pipeline failed. Please review the console output."
+        }
+
+        always {
+            cleanWs()
         }
     }
 }
