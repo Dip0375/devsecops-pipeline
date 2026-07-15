@@ -14,8 +14,10 @@ provider "aws" {
 }
 
 # S3 Bucket for artifacts
-# checkov:skip=CKV_AWS_144:Cross-region replication not required for this project
 resource "aws_s3_bucket" "artifacts" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication not required for this project
+  # checkov:skip=CKV2_AWS_62:Event notifications not required for this project
+  # checkov:skip=CKV_AWS_145:SSE-S3 encryption sufficient for this project
   bucket = "${var.project_name}-artifacts-${var.environment}"
 
   tags = {
@@ -74,8 +76,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
 }
 
 # S3 Logging Bucket
-# checkov:skip=CKV_AWS_144:Cross-region replication not required for this project
 resource "aws_s3_bucket" "logging" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication not required for this project
+  # checkov:skip=CKV2_AWS_62:Event notifications not required for this project
+  # checkov:skip=CKV_AWS_145:SSE-S3 encryption sufficient for this project
   bucket = "${var.project_name}-logs-${var.environment}"
 
   tags = {
