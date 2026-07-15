@@ -4,6 +4,7 @@ pipeline {
     environment {
         SONAR_PROJECT_KEY = 'humansafe'
         SONAR_PROJECT_NAME = 'HumanSafe'
+        PATH = "/var/lib/jenkins/.local/bin:/usr/local/bin:/usr/bin:/bin:${env.PATH}"
     }
 
     stages {
