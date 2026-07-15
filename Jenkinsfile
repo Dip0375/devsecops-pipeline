@@ -281,7 +281,7 @@ pipeline {
         stage('Send Email') {
             steps {
                 emailext(
-                    subject: "DevSecOps Pipeline | Build #${env.BUILD_NUMBER} | ${SONAR_PROJECT_NAME}",
+                    subject: "DevSecOps Pipeline | Build #${env.BUILD_NUMBER} | ${SONAR_PROJECT_KEY}",
                     body: '${FILE, path="reports/security-report.html"}',
                     to: "${RECIPIENT_EMAIL}",
                     mimeType: 'text/html'
