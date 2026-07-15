@@ -76,15 +76,16 @@ pipeline {
         stage('Checkov Scan') {
             steps {
                 sh '''
+                    mkdir -p reports
                     /var/lib/jenkins/.local/bin/checkov \
                     -d terraform \
                     -o json \
-                    --output-file-path reports/checkov.json
+                    > reports/checkov.json
                 '''
                 script {
-                    def checkov = readJSON file: 'reports/checkov.json/checkov_result.json'
-                    env.CHECKOV_PASSED = checkov.check_type?.sum { it.results?.passed?.size() ?: 0 } ?: 0
-                    env.CHECKOV_FAILED = checkov.check_type?.sum { it.results?.failed?.size() ?: 0 } ?: 0
+                    def checkov = readJSON file: 'reports/checkov.json'
+                    env.CHECKOV_PASSED = checkov.summary?.passed ?: 0
+                    env.CHECKOV_FAILED = checkov.summary?.failed ?: 0
                     echo "Checkov: Passed=${env.CHECKOV_PASSED}, Failed=${env.CHECKOV_FAILED}"
                 }
             }
