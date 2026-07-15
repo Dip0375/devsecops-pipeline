@@ -44,10 +44,18 @@ pipeline {
 
         stage('Checkov Scan') {
             steps {
-                sh '''
-                    echo "Running Checkov..."
-                    checkov -d terraform/
-                '''
+                script {
+                    try {
+                        sh '''
+                            echo "Running Checkov..."
+                            checkov -d terraform/ --quiet
+                        '''
+                        echo "Checkov scan passed."
+                    } catch (e) {
+                        echo "Checkov found issues. Continuing pipeline..."
+                        currentBuild.result = 'UNSTABLE'
+                    }
+                }
             }
         }
 

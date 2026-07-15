@@ -49,6 +49,19 @@ resource "aws_vpc" "main" {
   }
 }
 
+# CKV2_AWS_11: VPC Flow Logs
+resource "aws_flow_log" "main" {
+  vpc_id               = aws_vpc.main.id
+  traffic_type         = "ALL"
+  log_destination      = aws_cloudwatch_log_group.app.arn
+  log_destination_type = "cloud-watch-logs"
+
+  tags = {
+    Name        = "${var.project_name}-vpc-flow-log"
+    Environment = var.environment
+  }
+}
+
 # Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
@@ -64,7 +77,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidr
   availability_zone       = "${var.aws_region}a"
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = true # checkov:skip=CKV_AWS_130:Public subnet requires public IPs
 
   tags = {
     Name        = "${var.project_name}-public-subnet"
@@ -105,14 +118,73 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# IAM Role for EC2
+resource "aws_iam_role" "ec2_role" {
+  name = "${var.project_name}-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${var.project_name}-ec2-role"
+    Environment = var.environment
+  }
+}
+
+resource "aws_iam_role_policy" "ec2_policy" {
+  name = "${var.project_name}-ec2-policy"
+  role = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}-ec2-profile"
+  role = aws_iam_role.ec2_role.name
+}
+
 # Security Group for Web Server
 resource "aws_security_group" "web" {
   name        = "${var.project_name}-web-sg"
-  description = "Security group for HumanSafe web server"
+  description = "Security group for HumanSafe web server - allows HTTP, HTTPS and SSH access"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "HTTP"
+    description = "HTTP from internet"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -120,7 +192,7 @@ resource "aws_security_group" "web" {
   }
 
   ingress {
-    description = "HTTPS"
+    description = "HTTPS from internet"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -128,7 +200,7 @@ resource "aws_security_group" "web" {
   }
 
   ingress {
-    description = "App Port"
+    description = "Application port from internet"
     from_port   = var.container_port
     to_port     = var.container_port
     protocol    = "tcp"
@@ -136,7 +208,7 @@ resource "aws_security_group" "web" {
   }
 
   ingress {
-    description = "SSH"
+    description = "SSH access"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -144,10 +216,11 @@ resource "aws_security_group" "web" {
   }
 
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"] # checkov:skip=CKV_AWS_382:Required for outbound internet access
   }
 
   tags = {
@@ -163,6 +236,15 @@ resource "aws_instance" "web" {
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.web.id]
   subnet_id              = aws_subnet.public.id
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  ebs_optimized          = true
+  monitoring             = true
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required" # IMDSv2 enabled
+    http_put_response_hop_limit = 1
+  }
 
   user_data = <<-EOF
               #!/bin/bash
@@ -175,8 +257,8 @@ resource "aws_instance" "web" {
               chmod +x /usr/local/bin/docker-compose
 
               # Pull and run the HumanSafe container
-              docker pull humansafe:latest || echo "Image not yet available in registry"
-              docker run -d -p 80:5000 --name humansafe --restart unless-stopped humansafe:latest || echo "Container start pending"
+              docker pull infinite375/humansafe:latest || echo "Image not yet available in registry"
+              docker run -d -p 80:5000 --name humansafe --restart unless-stopped infinite375/humansafe:latest || echo "Container start pending"
               EOF
 
   root_block_device {
@@ -247,10 +329,69 @@ resource "aws_s3_bucket_public_access_block" "artifacts" {
   restrict_public_buckets = true
 }
 
+# CKV_AWS_18: S3 Access Logging
+resource "aws_s3_bucket" "logging" {
+  bucket = "${var.project_name}-logs-${var.environment}"
+
+  tags = {
+    Name        = "${var.project_name}-logging-bucket"
+    Environment = var.environment
+  }
+}
+
+resource "aws_s3_bucket_acl" "logging" {
+  bucket = aws_s3_bucket.logging.id
+  acl    = "log-delivery-write"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "logging" {
+  bucket = aws_s3_bucket.logging.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "logging" {
+  bucket = aws_s3_bucket.logging.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_logging" "artifacts" {
+  bucket        = aws_s3_bucket.artifacts.id
+  target_bucket = aws_s3_bucket.logging.id
+  target_prefix = "logs/"
+}
+
+# CKV2_AWS_61: S3 Lifecycle Configuration
+resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
+  bucket = aws_s3_bucket.artifacts.id
+
+  rule {
+    id     = "expire-old-objects"
+    status = "Enabled"
+
+    expiration {
+      days = 90
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+  }
+}
+
 # CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/aws/ec2/${var.project_name}"
-  retention_in_days = 30
+  retention_in_days = 365
 
   tags = {
     Name        = "${var.project_name}-logs"
