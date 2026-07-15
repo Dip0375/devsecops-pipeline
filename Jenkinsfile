@@ -151,9 +151,36 @@ pipeline {
                 sh '''
                     docker build \
                     -t $DOCKER_IMAGE:$IMAGE_TAG \
+                    -t $DOCKER_IMAGE:latest \
                     app/
                 '''
                 echo "Docker image built: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push $DOCKER_IMAGE:$IMAGE_TAG
+                        docker push $DOCKER_IMAGE:latest
+                        docker logout
+                    '''
+                }
+                echo "Image pushed to Docker Hub: ${DOCKER_IMAGE}:${IMAGE_TAG}"
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    docker stop humansafe || true
+                    docker rm humansafe || true
+                    docker pull $DOCKER_IMAGE:latest
+                    docker run -d -p 80:5000 --name humansafe --restart unless-stopped $DOCKER_IMAGE:latest
+                '''
+                echo "Deployed: http://44.244.86.26"
             }
         }
 
