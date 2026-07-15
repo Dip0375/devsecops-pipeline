@@ -89,6 +89,26 @@ pipeline {
                     echo "=== Checkov Results ==="
                     echo "Passed: ${passed}"
                     echo "Failed: ${failed}"
+
+                    if (failed > 0) {
+                        def userInput = input(
+                            message: "Checkov found ${failed} failed checks. Continue to next stages?",
+                            ok: 'Submit',
+                            parameters: [
+                                choice(
+                                    name: 'CHECKOV_DECISION',
+                                    choices: ['No - Abort Pipeline', 'Yes - Continue to Trivy & Deploy'],
+                                    description: 'Choose an action for failed Checkov checks'
+                                )
+                            ]
+                        )
+
+                        if (userInput == 'No - Abort Pipeline') {
+                            error("Pipeline aborted by user due to ${failed} Checkov failures.")
+                        } else {
+                            echo "User chose to continue despite ${failed} Checkov failures."
+                        }
+                    }
                 }
             }
         }
