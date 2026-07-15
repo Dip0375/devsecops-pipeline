@@ -1,10 +1,13 @@
 pipeline {
     agent any
 
+    tools {
+        sonarQube 'SonarScanner'
+    }
+
     environment {
-        DOCKER_IMAGE = 'humansafe'
-        DOCKER_TAG = "${env.BUILD_NUMBER}"
         SONAR_PROJECT_KEY = 'humansafe'
+        SONAR_PROJECT_NAME = 'HumanSafe'
     }
 
     stages {
@@ -20,9 +23,10 @@ pipeline {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
                         sonar-scanner \
-                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                            -Dsonar.sources=app \
-                            -Dsonar.python.version=3.11
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                          -Dsonar.sources=app \
+                          -Dsonar.python.version=3.11
                     '''
                 }
             }
@@ -36,94 +40,31 @@ pipeline {
             }
         }
 
-        stage('Unit Tests') {
+        stage('Checkov Scan') {
             steps {
-                sh '''
-                    cd app
-                    pip install -r requirements.txt
-                    python -m pytest tests/ -v --junitxml=reports/test-results.xml || true
-                '''
-            }
-            post {
-                always {
-                    junit 'app/reports/test-results.xml'
-                }
+                sh 'checkov -d terraform/ --output cli --quiet'
             }
         }
 
-        stage('Docker Build') {
+        stage('Trivy Filesystem Scan') {
             steps {
-                sh """
-                    cd app
-                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                """
+                sh 'trivy fs --severity HIGH,CRITICAL --exit-code 1 app/'
             }
         }
 
-        stage('Security Scan') {
+        stage('Trivy Secret Scan') {
             steps {
-                sh """
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                        aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 \
-                        ${DOCKER_IMAGE}:${DOCKER_TAG} || echo "Scan completed with findings"
-                """
-            }
-        }
-
-        stage('Push to Registry') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh """
-                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} \$DOCKER_USER/${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} \$DOCKER_USER/${DOCKER_IMAGE}:latest
-                        docker push \$DOCKER_USER/${DOCKER_IMAGE}:${DOCKER_TAG}
-                        docker push \$DOCKER_USER/${DOCKER_IMAGE}:latest
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Staging') {
-            steps {
-                sh '''
-                    echo "Deploying to staging environment..."
-                    cd terraform
-                    terraform init
-                    terraform apply -auto-approve -var="environment=staging"
-                '''
-            }
-        }
-
-        stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
-            input {
-                message "Deploy to Production?"
-                ok "Yes, deploy it!"
-            }
-            steps {
-                sh '''
-                    echo "Deploying to production environment..."
-                    cd terraform
-                    terraform apply -auto-approve -var="environment=production"
-                '''
+                sh 'trivy fs --scanners secret --severity HIGH,CRITICAL --exit-code 1 app/'
             }
         }
     }
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Pipeline completed successfully'
         }
         failure {
-            echo 'Pipeline failed. Please check the logs.'
-        }
-        always {
-            sh 'docker rmi ${DOCKER_IMAGE}:${DOCKER_TAG} || true'
-            cleanWs()
+            echo 'Pipeline failed. Check the logs.'
         }
     }
 }
